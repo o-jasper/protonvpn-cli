@@ -482,13 +482,14 @@ function openvpn_connect() {
        --timeout 10 --tries 1 -q -O $configs_dir/last "https://api.protonmail.ch/vpn/config?Platform=$(detect_platform_type)&LogicalID=$config_id&Protocol=$selected_protocol" \
       | openvpn --daemon --config "/dev/stdin" --auth-user-pass "$(get_protonvpn_cli_home)/protonvpn_openvpn_credentials" --auth-retry nointeract --verb 4 --log "$connection_logs"
 
-  config_file="$configs_dir/$(detect_platform_type)_$selected_protocol_$config_id"
+  config_file="$configs_dir/$(detect_platform_type)-$selected_protocol-$config_id"
   if [ -f "$config_file" ]; then
       if ! diff "$configs_dir/last" "$config_file" > /dev/null ; then  # It changed, log it.
           echo $(date): $config_file changed\; old $(sha256sum $config_file | cut -f 1 -d ' ') >> "$(get_protonvpn_cli_home)/public_key_log"
           mkdir -p $configs_dir/previous/
           mv $config_file $configs_dir/previous
 
+          echo "Configuration changed (of $(detect_platform_type)-$selected_protocol-$config_id)"
           cp $configs_dir/last $config_file
       fi
   else
