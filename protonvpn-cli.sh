@@ -164,7 +164,7 @@ function init_cli() {
   fi
 
   rm -rf "$(get_protonvpn_cli_home)/"  # Previous profile will be removed/overwritten, if any.
-  mkdir -p "$(get_protonvpn_cli_home)/"
+  mkdir -p "$(get_protonvpn_cli_home)/openvpn_configs/"
 
   create_vi_bindings
 
@@ -473,12 +473,30 @@ function openvpn_connect() {
     echo -e "[*] Logs path: $connection_logs"
   fi
 
-      wget --header 'x-pm-appversion: Other' \
-         --header 'x-pm-apiversion: 3' \
-         --header 'Accept: application/vnd.protonmail.v1+json' \
-         --timeout 10 --tries 1 -q -O - "https://api.protonmail.ch/vpn/config?Platform=$(detect_platform_type)&LogicalID=$config_id&Protocol=$selected_protocol" \
-         | openvpn --daemon --config "/dev/stdin" --auth-user-pass "$(get_protonvpn_cli_home)/protonvpn_openvpn_credentials" --auth-retry nointeract --verb 4 --log "$connection_logs"
+  configs_dir="$(get_protonvpn_cli_home)/openvpn_configs"
 
+  # NOTE: writes the $configs_dir/last all the time? Better in-memory?
+  wget --header 'x-pm-appversion: Other' \
+       --header 'x-pm-apiversion: 3' \
+       --header 'Accept: application/vnd.protonmail.v1+json' \
+       --timeout 10 --tries 1 -q -O $configs_dir/last "https://api.protonmail.ch/vpn/config?Platform=$(detect_platform_type)&LogicalID=$config_id&Protocol=$selected_protocol" \
+      | openvpn --daemon --config "/dev/stdin" --auth-user-pass "$(get_protonvpn_cli_home)/protonvpn_openvpn_credentials" --auth-retry nointeract --verb 4 --log "$connection_logs"
+
+  config_file="$configs_dir/$(detect_platform_type)_$selected_protocol_$config_id"
+  if [ -f "$config_file" ]; then
+      if diff "$configs_dir/last" "$config_file" ; then  # It changed, log it.
+          echo $(date): $config_file changed\; old $(sha256sum $config_file) >> "$(get_protonvpn_cli_home)/public_key_log"
+          mkdir -p $configs_dir/previous/
+          mv $config_file $configs_dir/previous
+
+          cp $configs_dir/last $config_file
+      fi
+  else
+      echo $(date): $config_file new >> "$(get_protonvpn_cli_home)/public_key_log"
+      cp $configs_dir/last $config_file
+  fi
+
+  openvpn --daemon --config $config_file --auth-user-pass "$(get_protonvpn_cli_home)/protonvpn_openvpn_credentials" --auth-retry nointeract --verb 4 --log "$connection_logs"
   echo "Connecting..."
 
   max_checks=3
